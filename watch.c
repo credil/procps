@@ -24,6 +24,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include <termios.h>
@@ -217,7 +218,7 @@ get_terminal_size(void)
 /* get current time in usec */
 typedef unsigned long long watch_usec_t;
 #define USECS_PER_SEC (1000000ull)
-watch_usec_t get_time_usec() {
+static watch_usec_t get_time_usec(void) {
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	return USECS_PER_SEC*now.tv_sec + now.tv_usec;
@@ -493,30 +494,22 @@ main(int argc, char *argv[])
 
 		if (child<0) { /* fork error */
                         perror("fork");
-
-                if(option_clear) {
-                        clear();
-                }
-
-
-		if (!(p = popen(command, "r"))) {
-			perror("popen");
 			do_exit(2);
-		} else if (child==0) { /* in child */
-			close (pipefd[0]); /* child doesn't need read side of pipe */
-			close (1); /* prepare to replace stdout with pipe */
-			if (dup2 (pipefd[1], 1)<0) { /* replace stdout with write side of pipe */
+                } else if (child==0) { /* in child */
+                        close (pipefd[0]); /* child doesn't need read side of pipe */
+                        close (1); /* prepare to replace stdout with pipe */
+                        if (dup2 (pipefd[1], 1)<0) { /* replace stdout with write side of pipe */
                                 perror("dup2");
-				exit(3);
-			}
-			dup2(1, 2); /* stderr should default to stdout */
+                                exit(3);
+                        }
+                        dup2(1, 2); /* stderr should default to stdout */
 
-			if (option_exec) { /* pass command to exec instead of system */
+                        if (option_exec) { /* pass command to exec instead of system */
                                 if (execvp(command_argv[0], command_argv)==-1) {
                                         perror("exec");
                                         exit(4);
-				}
-			} else {
+                                }
+                        } else {
                                 status=system(command); /* watch manpage promises sh quoting */
 
                                 /* propagate command exit status as child exit status */
@@ -525,37 +518,37 @@ main(int argc, char *argv[])
                                 } else {
                                         exit(WEXITSTATUS(status));
                                 }
-			}
+                        }
 
-		}
+                }
 
-		/* otherwise, we're in parent */
-		close(pipefd[1]); /* close write side of pipe */
-		if ((p=fdopen(pipefd[0], "r"))==NULL) {
+                /* otherwise, we're in parent */
+                close(pipefd[1]); /* close write side of pipe */
+                if ((p=fdopen(pipefd[0], "r"))==NULL) {
                         perror("fdopen");
-			do_exit(5);
-		}
+                        do_exit(5);
+                }
 
 
-		for (y = show_title; y < height; y++) {
-			int eolseen = 0, tabpending = 0;
-			wint_t carry = WEOF;
-			for (x = 0; x < width; x++) {
-				wint_t c = L' ';
-				int attr = 0;
+                for (y = show_title; y < height; y++) {
+                        int eolseen = 0, tabpending = 0;
+                        wint_t carry = WEOF;
+                        for (x = 0; x < width; x++) {
+                                wint_t c = L' ';
+                                int attr = 0;
 
-				if (!eolseen) {
-					/* if there is a tab pending, just spit spaces until the
-					   next stop instead of reading characters */
-					if (!tabpending)
-						do {
-							if(carry == WEOF) {
-								c = my_getwc(p);
-							}else{
-								c = carry;
-								carry = WEOF;
-							}
-						}while (c != WEOF && !isprint(c) && c<128
+                                if (!eolseen) {
+                                        /* if there is a tab pending, just spit spaces until the
+                                           next stop instead of reading characters */
+                                        if (!tabpending)
+                                                do {
+                                                        if(carry == WEOF) {
+                                                                c = my_getwc(p);
+                                                        }else{
+                                                                c = carry;
+                                                                carry = WEOF;
+                                                        }
+                                                }while (c != WEOF && !isprint(c) && c<128
                                                         && wcwidth(c) == 0
                                                         && c != L'\n'
                                                         && c != L'\t'
@@ -565,72 +558,72 @@ main(int argc, char *argv[])
                                                 process_ansi(p);
                                                 continue;
                                         }
-					if (c == L'\n')
-						if (!oldeolseen && x == 0) {
-							x = -1;
-							continue;
-						} else
-							eolseen = 1;
-					else if (c == L'\t')
-						tabpending = 1;
-					if (x==width-1 && wcwidth(c)==2) {
-						y++;
-						x = -1; //process this double-width
-						carry = c; //character on the next line
-						continue; //because it won't fit here
-					}
-					if (c == WEOF || c == L'\n' || c == L'\t')
-						c = L' ';
-					if (tabpending && (((x + 1) % 8) == 0))
-						tabpending = 0;
-				}
-				move(y, x);
-				if (option_differences) {
+                                        if (c == L'\n')
+                                                if (!oldeolseen && x == 0) {
+                                                        x = -1;
+                                                        continue;
+                                                } else
+                                                        eolseen = 1;
+                                        else if (c == L'\t')
+                                                tabpending = 1;
+                                        if (x==width-1 && wcwidth(c)==2) {
+                                                y++;
+                                                x = -1; //process this double-width
+                                                carry = c; //character on the next line
+                                                continue; //because it won't fit here
+                                        }
+                                        if (c == WEOF || c == L'\n' || c == L'\t')
+                                                c = L' ';
+                                        if (tabpending && (((x + 1) % 8) == 0))
+                                                tabpending = 0;
+                                }
+                                move(y, x);
+                                if (option_differences) {
                                         cchar_t oldc;
-					in_wch(&oldc);
-					attr = !first_screen
+                                        in_wch(&oldc);
+                                        attr = !first_screen
                                                 && ((wchar_t)c != oldc.chars[0]
                                                     ||
                                                     (option_differences_cumulative
                                                      && (oldc.attr & A_ATTRIBUTES)));
-				}
-				if (attr)
-					standout();
-				addnwstr((wchar_t*)&c,1);
-				if (attr)
-					standend();
-				if(wcwidth(c) == 0) { x--; }
-				if(wcwidth(c) == 2) { x++; }
-			}
-			oldeolseen = eolseen;
-		}
+                                }
+                                if (attr)
+                                        standout();
+                                addnwstr((wchar_t*)&c,1);
+                                if (attr)
+                                        standend();
+                                if(wcwidth(c) == 0) { x--; }
+                                if(wcwidth(c) == 2) { x++; }
+                        }
+                        oldeolseen = eolseen;
+                }
 
-		fclose(p);
+                fclose(p);
 
-		/* harvest child process and get status, propagated from command */
-		if (waitpid(child, &status, 0)<0) {
+                /* harvest child process and get status, propagated from command */
+                if (waitpid(child, &status, 0)<0) {
                         perror("waitpid");
-			do_exit(8);
-		};
+                        do_exit(8);
+                };
 
-		/* if child process exited in error, beep if option_beep is set */
-		if ((!WIFEXITED(status) || WEXITSTATUS(status))) {
+                /* if child process exited in error, beep if option_beep is set */
+                if ((!WIFEXITED(status) || WEXITSTATUS(status))) {
                         if (option_beep) beep();
                         if (option_errexit) do_exit(8);
-		}
+                }
 
-		first_screen = 0;
-		refresh();
-		if (precise_timekeeping) {
-			watch_usec_t cur_time = get_time_usec();
-			next_loop += USECS_PER_SEC*interval;
-			if (cur_time < next_loop)
-				usleep(next_loop - cur_time);
-		} else
+                first_screen = 0;
+                refresh();
+                if (precise_timekeeping) {
+                        watch_usec_t cur_time = get_time_usec();
+                        next_loop += USECS_PER_SEC*interval;
+                        if (cur_time < next_loop)
+                                usleep(next_loop - cur_time);
+                } else
                         usleep(interval * 1000000);
-	}
+        }
 
-	endwin();
+        endwin();
 
-	return 0;
+        return 0;
 }
