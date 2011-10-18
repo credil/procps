@@ -35,13 +35,14 @@ static struct option longopts[] = {
 	{"differences", optional_argument, 0, 'd'},
 	{"help", no_argument, 0, 'h'},
 	{"interval", required_argument, 0, 'n'},
+	{"no-clear", no_argument, 0, 'C'},
 	{"no-title", no_argument, 0, 't'},
 	{"version", no_argument, 0, 'v'},
 	{0, 0, 0, 0}
 };
 
 static char usage[] =
-    "Usage: %s [-dhntv] [--differences[=cumulative]] [--help] [--interval=<n>] [--no-title] [--version] <command>\n";
+    "Usage: %s [-Cdhntv] [--differences[=cumulative]] [--help] [--interval=<n>] [--no-title] [--version] <command>\n";
 
 static char *progname;
 
@@ -140,7 +141,7 @@ main(int argc, char *argv[])
 	int optc;
 	int option_differences = 0,
 	    option_differences_cumulative = 0,
-	    option_help = 0, option_version = 0;
+            option_help = 0, option_version = 0, option_clear = 1;
 	double interval = 2;
 	char *command;
 	int command_length = 0;	/* not including final \0 */
@@ -161,6 +162,9 @@ main(int argc, char *argv[])
 			break;
 		case 't':
 			show_title = 0;
+			break;
+		case 'C':
+			option_clear = 0;
 			break;
 		case 'n':
 			{
@@ -197,6 +201,7 @@ main(int argc, char *argv[])
 		fputs("  -n, --interval=<seconds>\t\tseconds to wait between updates\n", stderr);
 		fputs("  -v, --version\t\t\t\tprint the version number\n", stderr);
 		fputs("  -t, --no-title\t\t\tturns off showing the header\n", stderr);
+		fputs("  -C, --no-clear\t\t\tturns off clearing the screen each time\n", stderr);
 		exit(0);
 	}
 
@@ -260,6 +265,11 @@ main(int argc, char *argv[])
 			mvaddstr(0, width - tsl + 1, ts);
 			free(header);
 		}
+
+                if(option_clear) {
+                        clear();
+                }
+
 
 		if (!(p = popen(command, "r"))) {
 			perror("popen");
