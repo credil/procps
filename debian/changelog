@@ -1,3 +1,9 @@
+procps (1:3.2.8-9mcr) unstable; urgency=low
+
+  * clear screen on each iteration
+
+ -- Michael Richardson <mcr@credil.org>  Tue, 18 Oct 2011 16:45:50 -0400
+
 procps (1:3.2.8-9) unstable; urgency=low
 
   * Fix for patch on cgroup crash Closes: #579824

@@ -45,13 +45,14 @@ static struct option longopts[] = {
 	{"errexit", no_argument, 0, 'e'},
 	{"exec", no_argument, 0, 'x'},
 	{"precise", no_argument, 0, 'p'},
+	{"no-clear", no_argument, 0, 'C'},
 	{"no-title", no_argument, 0, 't'},
 	{"version", no_argument, 0, 'v'},
 	{0, 0, 0, 0}
 };
 
 static char usage[] =
-        "Usage: %s [-bcdhnptvx] [--beep] [--color] [--differences[=cumulative]] [--exec] [--help] [--interval=<n>] [--no-title] [--version] <command>\n";
+        "Usage: %s [-bcdhnptvxC] [--beep] [--color] [--differences[=cumulative]] [--exec] [--help] [--interval=<n>] [--no-title] [--version] <command>\n";
 
 static char *progname;
 
@@ -258,7 +259,9 @@ main(int argc, char *argv[])
                 option_beep = 0,
                 option_color = 0,
                 option_errexit = 0,
-                option_help = 0, option_version = 0;
+                option_help = 0,
+                option_version = 0,
+                option_clear = 1;
 	double interval = 2;
 	char *command;
 	wchar_t *wcommand = NULL;
@@ -300,7 +303,12 @@ main(int argc, char *argv[])
 			break;
 		case 'x':
                         option_exec = 1;
+                        break;
+
+		case 'C':
+			option_clear = 0;
 			break;
+
 		case 'n':
                 {
                         char *str;
@@ -343,6 +351,7 @@ main(int argc, char *argv[])
 		fputs("  -v, --version\t\t\t\tprint the version number\n", stderr);
 		fputs("  -t, --no-title\t\t\tturns off showing the header\n", stderr);
 		fputs("  -x, --exec\t\t\t\tpass command to exec instead of sh\n", stderr);
+		fputs("  -C, --no-clear\t\t\tturns off clearing the screen each time\n", stderr);
 		exit(0);
 	}
 
@@ -484,6 +493,14 @@ main(int argc, char *argv[])
 
 		if (child<0) { /* fork error */
                         perror("fork");
+
+                if(option_clear) {
+                        clear();
+                }
+
+
+		if (!(p = popen(command, "r"))) {
+			perror("popen");
 			do_exit(2);
 		} else if (child==0) { /* in child */
 			close (pipefd[0]); /* child doesn't need read side of pipe */
