@@ -128,7 +128,6 @@ static int ReadSetting(const char *restrict const name) {
    char *restrict outname;
    char inbuf[1025];
    FILE *restrict fp;
-   struct stat ts;
 
    if (!name || !*name) {
       fprintf(stderr, ERR_INVALID_KEY, name);
@@ -144,25 +143,6 @@ static int ReadSetting(const char *restrict const name) {
    /* used to display the output */
    outname = strdup(name);
    slashdot(outname,'/','.'); /* change / to . */
-
-   if (stat(tmpname, &ts) < 0) {
-      if (!IgnoreError) {
-         perror(tmpname);
-         rc = -1;
-      }
-      goto out;
-   }
-   if ((ts.st_mode & S_IRUSR) == 0)
-      goto out;
-
-   if (S_ISDIR(ts.st_mode)) {
-      size_t len;
-      len = strlen(tmpname);
-      tmpname[len] = '/';
-      tmpname[len+1] = '\0';
-      rc = DisplayAll(tmpname);
-      goto out;
-   }
 
    fp = fopen(tmpname, "r");
 
@@ -184,7 +164,6 @@ static int ReadSetting(const char *restrict const name) {
          break;
       }
    } else {
-      errno = 0;
       if(fgets(inbuf, sizeof inbuf - 1, fp)) {
          // this loop is required, see
          // /sbin/sysctl -a | egrep -6 dev.cdrom.info
@@ -215,20 +194,18 @@ static int ReadSetting(const char *restrict const name) {
             len = strlen(tmpname);
             tmpname[len] = '/';
             tmpname[len+1] = '\0';
-            fclose(fp);
             rc = DisplayAll(tmpname);
-            goto out;
+            break;
          }
          default:
             fprintf(stderr, ERR_UNKNOWN_READING, strerror(errno), outname);
             rc = -1;
-         case 0:
             break;
          }
       }
       fclose(fp);
    }
-out:
+
    free(tmpname);
    free(outname);
    return rc;
@@ -288,9 +265,8 @@ static int WriteSetting(const char *setting) {
    const char *value;
    const char *equals;
    char *tmpname;
-   char *outname;
    FILE *fp;
-   struct stat ts;
+   char *outname;
 
    if (!name) {        /* probably don't want to display this err */
       return 0;
@@ -323,24 +299,6 @@ static int WriteSetting(const char *setting) {
    outname[equals-name] = 0;
    slashdot(outname,'/','.'); /* change / to . */
  
-   if (stat(tmpname, &ts) < 0) {
-      if (!IgnoreError) {
-         perror(tmpname);
-         rc = -1;
-      }
-      goto out;
-   }
-
-   if ((ts.st_mode & S_IWUSR) == 0) {
-      fprintf(stderr, ERR_UNKNOWN_WRITING, strerror(EACCES), outname);
-      goto out;
-   }
-
-   if (S_ISDIR(ts.st_mode)) {
-      fprintf(stderr, ERR_UNKNOWN_WRITING, strerror(EACCES), outname);
-      goto out;
-   }
-
    fp = fopen(tmpname, "w");
 
    if (!fp) {
@@ -385,7 +343,7 @@ static int WriteSetting(const char *setting) {
          }
       }
    }
-out:
+
    free(tmpname);
    free(outname);
    return rc;
@@ -463,6 +421,7 @@ int main(int argc, char *argv[]) {
    const char *me = (const char *)basename(argv[0]);
    bool SwitchesAllowed = true;
    bool WriteMode = false;
+   bool DisplayAllOpt = false;
    int ReturnCode = 0;
    const char *preloadfile = DEFAULT_PRELOAD;
 
@@ -528,8 +487,8 @@ int main(int argc, char *argv[]) {
          case 'a': // string and integer values (for Linux, all of them)
          case 'A': // same as -a -o
          case 'X': // same as -a -x
-              SwitchesAllowed = false;
-              return DisplayAll(PROC_PATH);
+              DisplayAllOpt = true;
+              break;
          case 'V':
               fprintf(stdout, "sysctl (%s)\n",procps_version);
               exit(0);
@@ -544,12 +503,19 @@ int main(int argc, char *argv[]) {
       } else {
          if (NameOnly && Quiet)   // nonsense
             return Usage(me);
+         if (DisplayAllOpt)    // We cannot have values with -a
+             return Usage(me);
          SwitchesAllowed = false;
          if (WriteMode || index(*argv, '='))
             ReturnCode = WriteSetting(*argv);
          else
             ReturnCode = ReadSetting(*argv);
       }
+   }
+   if (DisplayAllOpt) {
+       if (Quiet)
+           return Usage(me);
+       return DisplayAll(PROC_PATH);
    }
 
    return ReturnCode;

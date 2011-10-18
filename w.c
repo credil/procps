@@ -15,7 +15,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +30,7 @@
 #include <termios.h>
 
 static int ignoreuser = 0;	/* for '-u' */
+static int oldstyle = 0;	/* for '-o' */
 static proc_t **procs;		/* our snapshot of the process table */
 
 typedef struct utmp utmp_t;
@@ -44,20 +44,19 @@ typedef struct utmp utmp_t;
 /* Uh... same thing as UT_NAMESIZE */
 #define USERSZ (sizeof u->ut_user)
 
+/* Arbitary setting, not too big for the screen, max host size */
+#define HOSTSZ 40
+
 
 /* This routine is careful since some programs leave utmp strings
- * unprintable.  Always outputs at least 16 chars padded with spaces
+ * unprintable.  Always outputs at least fromlen chars padded with spaces
  * on the right if necessary.
  */
-static void print_host(const char *restrict host, int len) {
+static void print_host(const char *restrict host, int len, const int fromlen) {
     const char *last;
     int width = 0;
 
-    /* FIXME: there should really be a way to configure this... */
-    /* for now, we'll just limit it to the 16 that the libc5 version
-     * of utmp uses.
-     */
-    if (len > 16) len = 16;
+    if (len > fromlen) len = fromlen;
     last = host + len;
     for ( ; host < last ; host++){
         if (isprint(*host) && *host != ' ') {
@@ -68,7 +67,8 @@ static void print_host(const char *restrict host, int len) {
 	}
     }
     // space-fill, and a '-' too if needed to ensure the column exists
-    if(width < 16) fputs("-               "+width, stdout);
+	while(width++ < fromlen)
+	  fputc(' ',stdout);
 }
 
 /***** compact 7 char format for time intervals (belongs in libproc?) */
@@ -77,6 +77,16 @@ static void print_time_ival7(time_t t, int centi_sec, FILE* fout) {
       printf("   ?   ");
       return;
     }
+    if (oldstyle) {
+      if (t >= 48*60*60)               /* > 2 days */
+        fprintf(fout, " %2ludays", t/(24*60*60));
+      else if (t >= 60*60)            /* > 1 hour */
+        fprintf(fout, " %2lu:%02u ", t/(60*60), (unsigned) ((t/60)%60));
+      else if (t > 60)               /* > 1 minute */
+        fprintf(fout, " %2lu:%02um", t/60, (unsigned) t%60);
+      else
+        fprintf(fout, "       ");
+    } else {
     if (t >= 48*60*60)				/* > 2 days */
 	fprintf(fout, " %2ludays", t/(24*60*60));
     else if (t >= 60*60)			/* > 1 hour */
@@ -84,7 +94,8 @@ static void print_time_ival7(time_t t, int centi_sec, FILE* fout) {
     else if (t > 60)				/* > 1 minute */
 	fprintf(fout, " %2lu:%02u ", t/60, (unsigned) t%60);
     else
-	fprintf(fout, " %2lu.%02us", t, centi_sec);
+    fprintf(fout, " %2lu.%02us", t, centi_sec);
+    }
 }
 
 /**** stat the device file to get an idle time */
@@ -169,7 +180,7 @@ static const proc_t *getproc(const utmp_t *restrict const u, const char *restric
 
 
 /***** showinfo */
-static void showinfo(utmp_t *u, int formtype, int maxcmd, int from) {
+static void showinfo(utmp_t *u, int formtype, int maxcmd, int from, const int userlen, const int fromlen) {
     unsigned long long jcpu;
     int ut_pid_found;
     unsigned i;
@@ -194,9 +205,9 @@ static void showinfo(utmp_t *u, int formtype, int maxcmd, int from) {
 
     strncpy(uname, u->ut_user, USERSZ);		/* force NUL term for printf */
     if (formtype) {
-	printf("%-9.8s%-9.8s", uname, u->ut_line);
+	printf("%-*.*s%-9.8s", userlen+1, userlen, uname, u->ut_line);
 	if (from)
-	    print_host(u->ut_host, sizeof u->ut_host);
+	    print_host(u->ut_host, sizeof u->ut_host, fromlen);
 	print_logintime(u->ut_time, stdout);
 	if (*u->ut_line == ':')			/* idle unknown for xdm logins */
 	    printf(" ?xdm? ");
@@ -209,9 +220,9 @@ static void showinfo(utmp_t *u, int formtype, int maxcmd, int from) {
 	} else
 	    printf("   ?   ");
     } else {
-	printf("%-9.8s%-9.8s", u->ut_user, u->ut_line);
+	printf("%-*.*s%-9.8s", userlen+1, userlen, u->ut_user, u->ut_line);
 	if (from)
-	    print_host(u->ut_host, sizeof u->ut_host);
+	    print_host(u->ut_host, sizeof u->ut_host, fromlen);
 	if (*u->ut_line == ':')			/* idle unknown for xdm logins */
 	    printf(" ?xdm? ");
 	else
@@ -230,17 +241,20 @@ static void showinfo(utmp_t *u, int formtype, int maxcmd, int from) {
 
 /***** main */
 int main(int argc, char **argv) {
-    char *user = NULL;
+    char *user = NULL, *p;
     utmp_t *u;
     struct winsize win;
-    int header=1, longform=1, from=1, args, maxcmd=80, ch;
+    int header=1, longform=1, from=1, args, maxcmd, ch;
+    int userlen = 8;
+    int fromlen = 16;
+	char *env_var;
 
 #ifndef W_SHOWFROM
     from = 0;
 #endif
 
     setlocale(LC_ALL, "");
-    for (args=0; (ch = getopt(argc, argv, "hlusfV")) != EOF; args++)
+    for (args=0; (ch = getopt(argc, argv, "hlusfVo")) != EOF; args++)
 	switch (ch) {
 	  case 'h': header = 0;		break;
 	  case 'l': longform = 1;	break;
@@ -248,6 +262,7 @@ int main(int argc, char **argv) {
 	  case 'f': from = !from;	break;
 	  case 'V': display_version();	exit(0);
 	  case 'u': ignoreuser = 1;	break;
+	  case 'o': oldstyle = 1;	break;
 	  default:
 	    printf("usage: w -hlsufV [user]\n"
 		   "    -h    skip header\n"
@@ -255,6 +270,7 @@ int main(int argc, char **argv) {
 		   "    -s    short listing\n"
 		   "    -u    ignore uid of processes\n"
 		   "    -f    toggle FROM field (default %s)\n"
+		   "    -o    old-style output\n"
 		   "    -V    display version\n", FROM_STRING);
 	    exit(1);
 	}
@@ -262,13 +278,33 @@ int main(int argc, char **argv) {
     if ((argv[optind]))
 	user = (argv[optind]);
 
+	/* Get user field length from environment */
+	if ( (env_var = getenv("PROCPS_USERLEN")) != NULL) {
+        userlen = atoi(env_var);
+        if (userlen < 8 || userlen > USERSZ) {
+            fprintf(stderr, "User length environment PROCPS_USERLEN must be between 8 and %d, ignoring.\n", USERSZ);
+			userlen=8;
+        }
+	}
+	/* Get from field length from environment */
+	if ( (env_var = getenv("PROCPS_FROMLEN")) != NULL) {
+        fromlen = atoi(env_var);
+        if (fromlen < 8 || fromlen > HOSTSZ) {
+            fprintf(stderr, "From length environment PROCPS_FROMLEN must be between 8 and %d, ignoring.\n", HOSTSZ);
+			fromlen=16;
+        }
+	}
     if (ioctl(1, TIOCGWINSZ, &win) != -1 && win.ws_col > 0)
 	maxcmd = win.ws_col;
+    else if (p = getenv("COLUMNS"))
+        maxcmd = atoi(p);
+    else
+	maxcmd = 80;
     if (maxcmd < 71) {
 	fprintf(stderr, "%d column window is too narrow\n", maxcmd);
 	exit(1);
     }
-    maxcmd -= 29 + (from ? 16 : 0) + (longform ? 20 : 0);
+    maxcmd -= 21 + userlen + (from ? fromlen : 0) + (longform ? 20 : 0);
     if (maxcmd < 3)
 	fprintf(stderr, "warning: screen width %d suboptimal.\n", win.ws_col);
 
@@ -276,7 +312,7 @@ int main(int argc, char **argv) {
 
     if (header) {				/* print uptime and headers */
 	print_uptime();
-	printf("USER     TTY      ");
+	printf("%-*s TTY      ",userlen,"USER");
 	if (from)
 	    printf("FROM            ");
 	if (longform)
@@ -292,14 +328,14 @@ int main(int argc, char **argv) {
 	    u = getutent();
 	    if (unlikely(!u)) break;
 	    if (u->ut_type != USER_PROCESS) continue;
- 	    if (!strncmp(u->ut_user, user, USERSZ)) showinfo(u, longform, maxcmd, from);
+ 	    if (!strncmp(u->ut_user, user, USERSZ)) showinfo(u, longform, maxcmd, from, userlen, fromlen);
 	}
     } else {
 	for (;;) {
 	    u = getutent();
 	    if (unlikely(!u)) break;
 	    if (u->ut_type != USER_PROCESS) continue;
- 	    if (*u->ut_user) showinfo(u, longform, maxcmd, from);
+ 	    if (*u->ut_user) showinfo(u, longform, maxcmd, from, userlen, fromlen);
 	}
     }
     endutent();

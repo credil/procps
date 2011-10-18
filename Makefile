@@ -68,6 +68,7 @@ TARFILES := AUTHORS BUGS NEWS README TODO COPYING COPYING.LIB \
 _TARFILES := Makefile
 
 CURSES := -lncurses
+CURSESW := -lncursesw
 
 # This seems about right for the dynamic library stuff.
 # Something like this is probably needed to make the SE Linux
@@ -119,7 +120,7 @@ ifneq ($(MAKECMDGOALS),beta)
 # Unlike the kernel one, this check_gcc goes all the way to
 # producing an executable. There might be a -m64 that works
 # until you go looking for a 64-bit curses library.
-check_gcc = $(shell if $(CC) $(ALL_CPPFLAGS) $(ALL_CFLAGS) dummy.c $(ALL_LDFLAGS) $(1) -o /dev/null $(CURSES) > /dev/null 2>&1; then echo "$(1)"; else echo "$(2)"; fi ;)
+check_gcc = $(shell if $(CC) $(ALL_CPPFLAGS) $(ALL_CFLAGS) dummy.c $(ALL_LDFLAGS) $(1) -o will_this_file_really_exist.tmp $(CURSES) $(CURSESW) > /dev/null 2>&1; then echo "$(1)"; else echo "$(2)"; fi ; rm -f will_this_file_really_exist.tmp)
 
 # Be 64-bit if at all possible. In a cross-compiling situation, one may
 # do "make m64=-m32 lib64=lib" to produce 32-bit executables. DO NOT
@@ -174,8 +175,7 @@ INSTALL := $(BINFILES) $(MANFILES)
 # want this rule first, use := on ALL, and ALL not filled in yet
 all: do_all
 
--include proc/module.mk
--include ps/module.mk
+-include */module.mk
 
 do_all:    $(ALL)
 
@@ -251,7 +251,7 @@ slabtop top: % : %.o $(LIBPROC)
 	$(CC) $(ALL_CFLAGS) $^ $(ALL_LDFLAGS) -o $@ $(CURSES)
 
 watch: % : %.o
-	$(CC) $(ALL_CFLAGS) $^ $(ALL_LDFLAGS) -o $@ $(CURSES)
+	$(CC) $(ALL_CFLAGS) $^ $(ALL_LDFLAGS) -o $@ $(CURSESW)
 
 ############ progX --> progY
 

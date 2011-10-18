@@ -1,11 +1,11 @@
 .\"             -*-Nroff-*-
 .\"
-.TH W 1 "8 Dec 1993 " " " "Linux User's Manual"
+.TH W 1 "5 October 2009 " " " "Linux User's Manual"
 .SH NAME
 w \- Show who is logged on and what they are doing.
 .SH SYNOPSIS
 .B w
-.RB [ \-husfV ]
+.RB [ \-husfVo ]
 .RI [ user ]
 .SH DESCRIPTION
 .B w
@@ -55,8 +55,19 @@ field is shown by default.
 .B "\-V "
 Display version information.
 .TP 0.5i
+.B "\-o "
+Old style output. Prints blank space for idle times less than one minute.
+.TP 0.5i
 .B "user "
 Show information about the specified user only.
+
+.SH ENVIRONMENT
+.TP
+PROCPS_USERLEN
+Override the default width of the username column. Defaults to 8.
+.TP
+PROCPS_FROMLEN
+Override the default width of the from column. Defaults to 16.
 
 .SH FILES
 .TP
@@ -66,6 +77,19 @@ information about who is currently logged on
 .I /proc
 process information
 .PP
+
+.SH NOTES
+The output for Idle, JCPU and PCPU times vaires depending on if you use
+the \-o (old style) option or not. These formats can be confusing if you
+switch between the old style and standard.  In the following paragraphs
+days are DD, hours HH, minutes MM, seconds SS and 100ths of seconds CC.
+
+The standard format is DDdays, HH:MMm, MM:SS or SS.CC if the times are
+greater than 2 days, 1hour, or 1 minute respectively.
+
+For the \-o option, the output will be either  DDdays, HH:MM, MM:SSm or
+blank if the times are greater than 2 days, 1 hour or 1 minute
+respectively.
 
 .SH "SEE ALSO"
 .BR free (1),

@@ -82,25 +82,24 @@ typedef struct proc_t {
     long
 	priority,	// stat            kernel scheduling priority
 	nice,		// stat            standard unix nice level of process
-	rss,		// stat            identical to 'resident'
+	rss,		// stat            resident set size from /proc/#/stat (pages)
 	alarm,		// stat            ?
     // the next 7 members come from /proc/#/statm
-	size,		// statm           total virtual memory (as # pages)
-	resident,	// statm           resident non-swapped memory (as # pages)
-	share,		// statm           shared (mmap'd) memory (as # pages)
-	trs,		// statm           text (exe) resident set (as # pages)
-	lrs,		// statm           library resident set (always 0 w/ 2.6)
-	drs,		// statm           data+stack resident set (as # pages)
-	dt;		// statm           dirty pages (always 0 w/ 2.6)
+	size,		// statm           total # of pages of memory
+	resident,	// statm           number of resident set (non-swapped) pages (4k)
+	share,		// statm           number of pages of shared (mmap'd) memory
+	trs,		// statm           text resident set size
+	lrs,		// statm           shared-lib resident set size
+	drs,		// statm           data resident set size
+	dt;		// statm           dirty pages
     unsigned long
-	vm_size,        // status          equals 'size' (as kb)
-	vm_lock,        // status          locked pages (as kb)
-	vm_rss,         // status          equals 'rss' and/or 'resident' (as kb)
-	vm_data,        // status          data only size (as kb)
-	vm_stack,       // status          stack only size (as kb)
-	vm_swap,        // status          based on linux-2.6.34 "swap ents" (as kb)
-	vm_exe,         // status          equals 'trs' (as kb)
-	vm_lib,         // status          total, not just used, library pages (as kb)
+	vm_size,        // status          same as vsize in kb
+	vm_lock,        // status          locked pages in kb
+	vm_rss,         // status          same as rss in kb
+	vm_data,        // status          data size
+	vm_stack,       // status          stack size
+	vm_exe,         // status          executable size
+	vm_lib,         // status          library size (all pages, not just used ones)
 	rtprio,		// stat            real-time priority
 	sched,		// stat            scheduling class
 	vsize,		// stat            number of pages of virtual memory ...
@@ -111,9 +110,8 @@ typedef struct proc_t {
 	cmin_flt,	// stat            cumulative min_flt of process and child processes
 	cmaj_flt;	// stat            cumulative maj_flt of process and child processes
     char
-        **environ,      // (special)       environment string vector (/proc/#/environ)
-        **cmdline,      // (special)       command line string vector (/proc/#/cmdline)
-        **cgroup;       // (special)       cgroup string vector (/proc/#/cgroup)
+	**environ,	// (special)       environment string vector (/proc/#/environ)
+	**cmdline;	// (special)       command line string vector (/proc/#/cmdline)
     char
 	// Be compatible: Digital allows 16 and NT allows 14 ???
     	euser[P_G_SZ],	// stat(),status   effective user name
@@ -124,6 +122,7 @@ typedef struct proc_t {
     	egroup[P_G_SZ],	// status          effective group name
     	sgroup[P_G_SZ],	// status          saved group name
     	fgroup[P_G_SZ],	// status          filesystem group name
+    	**supgrp, // status        supplementary groups
     	cmd[16];	// stat,status     basename of executable file in call to exec(2)
     struct proc_t
 	*ring,		// n/a             thread group ring
@@ -139,13 +138,11 @@ typedef struct proc_t {
         suid, sgid,     // status          saved
         fuid, fgid,     // status          fs (used for file access only)
 	tpgid,		// stat            terminal process group id
+	nsupgid,	// status        number of supplementary groups
+	*supgid,	// status        supplementary gid's
 	exit_signal,	// stat            might not be SIGCHLD
 	processor;      // stat            current (or most recent?) CPU
-#ifdef OOMEM_ENABLE
-    int
-        oom_score,      // oom_score       (badness for OOM killer)
-        oom_adj;        // oom_adj         (adjustment to OOM score)
-#endif
+    	char **cgroup;  // cgroup	   current cgroup, looks like a classic filepath
 } proc_t;
 
 // PROCTAB: data structure holding the persistent information readproc needs
@@ -204,6 +201,12 @@ extern proc_t** readproctab(int flags, ... /* same as openproc */ );
 // clean-up open files, etc from the openproc()
 extern void closeproc(PROCTAB* PT);
 
+// allocate memory for supgrp
+extern void allocsupgrp(proc_t *p);
+
+// free memory allocated for supgrp
+extern void freesupgrp(proc_t *p);
+
 // retrieve the next process matching the criteria set by the openproc()
 extern proc_t* readproc(PROCTAB *restrict const PT, proc_t *restrict p);
 extern proc_t* readtask(PROCTAB *restrict const PT, const proc_t *restrict const p, proc_t *restrict t);
@@ -244,16 +247,13 @@ extern proc_t * get_proc_stats(pid_t pid, proc_t *p);
 #define PROC_FILLWCHAN       0x0080 // look up WCHAN name
 #define PROC_FILLARG         0x0100 // alloc and fill in `cmdline'
 #define PROC_FILLCGROUP      0x0200 // alloc and fill in `cgroup`
-#define PROC_FILLOOM         0x0400 // alloc and fill in oom_score, oom_adj
+#define PROC_FILLSUPGRP      0x0400 // resolve supplementary group id number -> group name
 
 #define PROC_LOOSE_TASKS     0x2000 // threat threads as if they were processes
 
 // Obsolete, consider only processes with one of the passed:
 #define PROC_PID             0x1000  // process id numbers ( 0   terminated)
 #define PROC_UID             0x4000  // user id numbers    ( length needed )
-
-#define PROC_EDITCGRPCVT    0x10000 // edit `cgroup' as single vector
-#define PROC_EDITCMDLCVT    0x20000 // edit `cmdline' as single vector
 
 // it helps to give app code a few spare bits
 #define PROC_SPARE_1     0x01000000

@@ -1,0 +1,17 @@
+ff0eb0818b9bc71faf2706a257de4237  usr/include/proc/alloc.h
+7adfa2589972550a9965b46b3350ef90  usr/include/proc/devname.h
+0a81b9ecbf0a0ee7f41c88f4c61c9799  usr/include/proc/escape.h
+3c2d669284e94491e065e4842a8f29d4  usr/include/proc/procps.h
+8fc54889a90c7258fa38ec5f6c3d0065  usr/include/proc/pwcache.h
+a3d0c5f471f2871645ca57c749234f7e  usr/include/proc/readproc.h
+26dc44569c496e6bc4170da43d0e5627  usr/include/proc/sig.h
+1db244940aeb3834fdf13ee58f5c6f89  usr/include/proc/slab.h
+65cbc44eb0351e9f14b7ffb65eeec927  usr/include/proc/sysinfo.h
+4c50af76ff3ac95be771ad3955fb0a66  usr/include/proc/version.h
+e68e54da9f9191a3c064023f46b89111  usr/include/proc/wchan.h
+452fa55bbc79aec1f437a6588ab34c54  usr/include/proc/whattime.h
+9ccba65e1c1e7b11524047ca2212f891  usr/lib/libproc.a
+0562e96c1eba00395f6bb6ec093f7549  usr/share/doc/libproc-dev/NEWS.Debian.gz
+4059a28d14a2197c09a30506c78feb51  usr/share/doc/libproc-dev/changelog.Debian.gz
+f7a739b881f3fe693786bef2956e55c3  usr/share/doc/libproc-dev/changelog.gz
+d64f528f011055e54f3aef200c651b29  usr/share/doc/libproc-dev/copyright

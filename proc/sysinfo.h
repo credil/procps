@@ -7,11 +7,7 @@
 EXTERN_C_BEGIN
 
 extern unsigned long long Hertz;   /* clock tick frequency */
-#ifndef OOMEM_ENABLE
 extern long smp_num_cpus;     /* number of CPUs */
-#else
-extern long smp_num_cpus(void);     /* number of CPUs */
-#endif
 extern int have_privs;     /* boolean, true if setuid or similar */
 
 #if 0
@@ -21,7 +17,6 @@ extern void eight_cpu_numbers(JT *uret, JT *nret, JT *sret, JT *iret, JT *wret, 
 #endif
 
 extern int        uptime (double *uptime_secs, double *idle_secs);
-extern unsigned long getbtime(void);
 extern void       loadavg(double *av1, double *av5, double *av15);
 
 
@@ -118,7 +113,7 @@ typedef struct partition_stat{
 	unsigned           parent_disk;  // index into a struct disk_stat array
 	unsigned           reads;
 	unsigned           writes;
-	unsigned           requested_writes;
+	unsigned long long requested_writes;
 }partition_stat;
 
 extern unsigned int getpartitions_num(struct disk_stat *disks, int ndisks);

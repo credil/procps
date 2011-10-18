@@ -224,7 +224,6 @@ static unsigned task_format_needs;
 #define needs_for_format (proc_format_needs|task_format_needs)
 
 #define PROC_ONLY_FLAGS (PROC_FILLENV|PROC_FILLARG|PROC_FILLCOM|PROC_FILLMEM|PROC_FILLCGROUP)
-
 /***** munge lists and determine openproc() flags */
 static void lists_and_needs(void){
   check_headers();
@@ -284,12 +283,11 @@ static void lists_and_needs(void){
   }
   if(!unix_f_option){
     proc_format_needs &= ~PROC_FILLCOM;
-    proc_format_needs |=  PROC_EDITCMDLCVT;
     needs_for_sort    &= ~PROC_FILLCOM;
   }
   // convert ARG to COM as a standard
   if(proc_format_needs & PROC_FILLARG){
-    proc_format_needs |= (PROC_FILLCOM | PROC_EDITCMDLCVT);
+    proc_format_needs |= PROC_FILLCOM;
     proc_format_needs &= ~PROC_FILLARG;
   }
   if(bsd_e_option){
@@ -344,6 +342,8 @@ static void simple_spew(void){
       if(buf.cmdline) free((void*)*buf.cmdline); // ought to reuse
       if(buf.environ) free((void*)*buf.environ); // ought to reuse
       if(buf.cgroup)  free((void*)*buf.cgroup);
+      if(buf.nsupgid > 0 && buf.supgid) free(buf.supgid);
+      if((ptp->flags & PROC_FILLSUPGRP) && buf.nsupgid>0 && buf.supgrp) freesupgrp(&buf);
     }
     break;
   case TF_show_proc|TF_loose_tasks:    // H option
@@ -351,12 +351,16 @@ static void simple_spew(void){
       proc_t buf2;
       // must still have the process allocated
       while(readtask(ptp,&buf,&buf2)){
-        if(!want_this_proc(&buf)) continue;
-        show_one_proc(&buf2, task_format_list);
+        if(want_this_proc(&buf)) show_one_proc(&buf2, task_format_list);
+        if(buf2.nsupgid > 0 && buf2.supgid && buf.supgid!=buf2.supgid) free(buf2.supgid);
+        if((ptp->flags & PROC_FILLSUPGRP) && buf2.nsupgid>0 && buf2.supgrp && buf.supgrp!=buf2.supgrp)
+          freesupgrp(&buf2);
       }
       if(buf.cmdline) free((void*)*buf.cmdline); // ought to reuse
       if(buf.environ) free((void*)*buf.environ); // ought to reuse
       if(buf.cgroup)  free((void*)*buf.cgroup);
+      if(buf.nsupgid > 0 && buf.supgid) free(buf.supgid);
+      if((ptp->flags & PROC_FILLSUPGRP) && buf.nsupgid>0 && buf.supgrp) freesupgrp(&buf);
     }
     break;
   case TF_show_proc|TF_show_task:      // m and -m options
@@ -365,11 +369,18 @@ static void simple_spew(void){
         proc_t buf2;
         show_one_proc(&buf, proc_format_list);
         // must still have the process allocated
-        while(readtask(ptp,&buf,&buf2)) show_one_proc(&buf2, task_format_list);
+        while(readtask(ptp,&buf,&buf2)){
+          show_one_proc(&buf2, task_format_list);
+          if(buf2.nsupgid > 0 && buf2.supgid && buf.supgid!=buf2.supgid) free(buf2.supgid);
+          if(ptp->flags & PROC_FILLSUPGRP && buf2.nsupgid>0 && buf2.supgrp && buf.supgrp!=buf2.supgrp)
+            freesupgrp(&buf2);
+        }
       }
       if(buf.cmdline) free((void*)*buf.cmdline); // ought to reuse
       if(buf.environ) free((void*)*buf.environ); // ought to reuse
       if(buf.cgroup)  free((void*)*buf.cgroup);
+      if(buf.nsupgid > 0 && buf.supgid) free(buf.supgid);
+      if((ptp->flags & PROC_FILLSUPGRP) && buf.nsupgid>0 && buf.supgrp) freesupgrp(&buf);
      }
     break;
   case TF_show_task:                   // -L and -T options
@@ -377,11 +388,18 @@ static void simple_spew(void){
       if(want_this_proc(&buf)){
         proc_t buf2;
         // must still have the process allocated
-        while(readtask(ptp,&buf,&buf2)) show_one_proc(&buf2, task_format_list);
+        while(readtask(ptp,&buf,&buf2)){
+          show_one_proc(&buf2, task_format_list);
+          if(buf2.nsupgid > 0 && buf2.supgid && buf.supgid!=buf2.supgid) free(buf2.supgid);
+          if(ptp->flags & PROC_FILLSUPGRP && buf2.nsupgid>0 && buf2.supgrp && buf.supgrp!=buf2.supgrp)
+            freesupgrp(&buf2);
+        }
       }
       if(buf.cmdline) free((void*)*buf.cmdline); // ought to reuse
       if(buf.environ) free((void*)*buf.environ); // ought to reuse
       if(buf.cgroup)  free((void*)*buf.cgroup);
+      if(buf.nsupgid > 0 && buf.supgid) free(buf.supgid);
+      if((ptp->flags & PROC_FILLSUPGRP) && buf.nsupgid>0 && buf.supgrp) freesupgrp(&buf);
    }
     break;
   }
@@ -544,6 +562,12 @@ static void fancy_spew(void){
   qsort(processes, n, sizeof(proc_t*), compare_two_procs);
   if(forest_type) show_forest(n);
   else show_proc_array(ptp,n);
+  int i;
+  for (i=0; i<n; i++)
+    if (processes[i]->nsupgid>0 && processes[i]->supgid) free(processes[i]->supgid);
+  if (ptp->flags & PROC_FILLSUPGRP)
+    for (i=0; i<n; i++)
+      if (processes[i]->nsupgid>0 && processes[i]->supgrp) freesupgrp(processes[i]);
   closeproc(ptp);
 }
 

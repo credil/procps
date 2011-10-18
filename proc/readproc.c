@@ -12,7 +12,6 @@
 #include "version.h"
 #include "readproc.h"
 #include "alloc.h"
-#include "escape.h"
 #include "pwcache.h"
 #include "devname.h"
 #include "procps.h"
@@ -21,6 +20,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <string.h>
+#include <limits.h>
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
@@ -78,7 +78,7 @@ typedef struct status_table_struct {
 // (leave the colon and newline) So "Pid:\n" and "Threads:\n"
 // would be lines in the file. (no quote, no escape, etc.)
 //
-// In the status_table_struct watch out for name size (grrr, expanding)
+// Watch out for name size in the status_table_struct (grrr, expanding)
 // and the number of entries (we mask with 63 for now). The table
 // must be padded out to 64 entries, maybe 128 in the future.
 
@@ -86,82 +86,68 @@ static void status2proc(char *S, proc_t *restrict P, int is_proc){
     long Threads = 0;
     long Tgid = 0;
     long Pid = 0;
+    int hash = 0;
+    int isupgid = 0;
 
-  // 128 entries because we trust the kernel to use ASCII names
-  static const unsigned char asso[] =
+    static const unsigned char asso[] =
     {
-      64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-      64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-      64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-      64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-      64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-      64, 64, 64, 64, 64, 64, 64, 64, 28, 64,
-      64, 64, 64, 64, 64, 64,  8, 25, 23, 25,
-       6, 25,  0,  3, 64, 64,  3, 64, 25, 64,
-      20,  1,  1,  5,  0, 30,  0,  0, 64, 64,
-      64, 64, 64, 64, 64, 64, 64,  3, 64,  0,
-       0, 18, 64, 10, 64, 10, 64, 64, 64, 20,
-      64, 20,  0, 64, 25, 64,  3, 15, 64,  0,
-      30, 64, 64, 64, 64, 64, 64, 64
+      66, 66, 66, 66, 66, 66, 66, 66, 66, 66,
+      66, 66, 66, 66, 66, 66, 66, 66, 66, 66,
+      66, 66, 66, 66, 66, 66, 66, 66, 66, 66,
+      66, 66, 66, 66, 66, 66, 66, 66, 66, 66,
+      66, 66, 66, 66, 66, 66, 66, 66, 66, 66,
+      66, 66, 66, 66, 66, 66, 66, 66,  0, 66,
+      66, 66, 66, 66, 66, 66,  3, 30, 20, 30,
+      66, 25, 66, 20, 66, 66, 30, 66, 25, 66,
+       0, 66,  8, 10,  3, 18,  5, 66, 66, 66,
+      66, 66, 66, 66, 66, 66, 66,  3, 66, 10,
+       0,  0, 66, 25, 66,  5, 66, 66, 66, 25,
+      66,  5, 66, 66,  0, 66,  0,  0, 66, 66,
+      25, 66, 66, 66, 66, 66, 66, 66
     };
 
     static const status_table_struct table[] = {
-      F(VmHWM)
-      NUL NUL
-      F(VmLck)
-      NUL
-      F(VmSwap)
-      F(VmRSS)
-      NUL
-      F(VmStk)
-      NUL
-      F(Tgid)
-      F(State)
-      NUL
-      F(VmLib)
-      NUL
-      F(VmSize)
-      F(SigQ)
-      NUL
-      F(SigIgn)
-      NUL
-      F(VmPTE)
-      F(FDSize)
-      NUL
-      F(SigBlk)
-      NUL
-      F(ShdPnd)
-      F(VmData)
-      NUL
-      F(CapInh)
-      NUL
-      F(PPid)
-      NUL NUL
-      F(CapBnd)
-      NUL
-      F(SigPnd)
-      NUL NUL
-      F(VmPeak)
-      NUL
-      F(SigCgt)
+      F(Pid)
       NUL NUL
       F(Threads)
       NUL
-      F(CapPrm)
+      F(PPid)
       NUL NUL
-      F(Pid)
+      F(Tgid)
       NUL
-      F(CapEff)
+      F(ShdPnd)
       NUL NUL
-      F(Gid)
+      F(State)
       NUL
-      F(VmExe)
+      F(VmStk)
       NUL NUL
       F(Uid)
       NUL
-      F(Groups)
+      F(VmSize)
       NUL NUL
+      F(VmRSS)
+      NUL
+      F(Gid)
+      NUL NUL
+      F(VmData)
+      NUL
+      F(Groups)
+      NUL NUL NUL NUL
+      F(SigPnd)
+      NUL NUL
+      F(SigBlk)
+      NUL
+      F(VmLib)
+      NUL NUL NUL NUL
+      F(VmLck)
+      NUL NUL NUL NUL
       F(Name)
+      NUL NUL NUL NUL
+      F(SigIgn)
+      NUL NUL NUL NUL
+      F(VmExe)
+      NUL NUL NUL NUL
+      F(SigCgt)
     };
 
 #undef F
@@ -176,8 +162,10 @@ ENTER(0x220);
     P->vm_stack= 0;
     P->vm_exe  = 0;
     P->vm_lib  = 0;
-    P->vm_swap = 0;
     P->nlwp    = 0;
+    P->nsupgid = 0;
+    P->supgid = NULL;
+    P->supgrp = NULL;
     P->signal[0] = '\0';  // so we can detect it as missing for very old kernels
 
     goto base;
@@ -194,7 +182,9 @@ ENTER(0x220);
         // examine a field name (hash and compare)
     base:
         if(unlikely(!*S)) break;
-        entry = table[63 & (asso[S[3]] + asso[S[2]] + asso[S[0]])];
+        hash = asso[S[3]] + asso[S[2]] + asso[S[0]];
+        if (hash > 65) continue;
+        entry = table[hash];
         colon = strchr(S, ':');
         if(unlikely(!colon)) break;
         if(unlikely(colon[1]!='\t')) break;
@@ -292,6 +282,21 @@ ENTER(0x220);
         P->sgid = strtol(S,&S,10);
         P->fgid = strtol(S,&S,10);
         continue;
+    case_Groups:
+        isupgid = 0;
+        if (*S != '\n'){ // Is there any supplementary group ?
+          P->supgid = (int *) xmalloc(0x0004 * sizeof(int));
+          int vctsize = 0x0004;
+          while (S[1] != '\n' && isupgid<INT_MAX){ // There is one blank before '\n'
+            if (isupgid == vctsize){
+              vctsize *= 2;
+              P->supgid = (int *)xrealloc(P->supgid,vctsize * sizeof(int));
+            }
+            P->supgid[isupgid++] = strtol(S,&S,10);
+            P->nsupgid++;
+          }
+        }
+        continue;
     case_VmData:
         P->vm_data = strtol(S,&S,10);
         continue;
@@ -312,20 +317,6 @@ ENTER(0x220);
         continue;
     case_VmStk:
         P->vm_stack = strtol(S,&S,10);
-        continue;
-    case_VmSwap: // Linux 2.6.34
-        P->vm_swap = strtol(S,&S,10);
-        continue;
-    case_CapBnd:
-    case_CapEff:
-    case_CapInh:
-    case_CapPrm:
-    case_FDSize:
-    case_Groups:
-    case_SigQ:
-    case_VmHWM: // 2005, peak VmRSS unless VmRSS is bigger
-    case_VmPTE:
-    case_VmPeak: // 2005, peak VmSize unless VmSize is bigger
         continue;
     }
 
@@ -367,19 +358,6 @@ LEAVE(0x220);
 }
 
 ///////////////////////////////////////////////////////////////////////
-#ifdef OOMEM_ENABLE
-static void oomscore2proc(const char* S, proc_t *restrict P)
-{
-    sscanf(S, "%d", &P->oom_score);
-}
-
-static void oomadj2proc(const char* S, proc_t *restrict P)
-{
-    sscanf(S, "%d", &P->oom_adj);
-}
-#endif
-///////////////////////////////////////////////////////////////////////
-
 
 // Reads /proc/*/stat files, being careful not to trip over processes with
 // names like ":-) 1 2 3 4 5 6".
@@ -480,20 +458,17 @@ static char** file2strvec(const char* directory, const char* what) {
     if(fd==-1) return NULL;
 
     /* read whole file into a memory buffer, allocating as we go */
-    while ((n = read(fd, buf, sizeof buf - 1)) >= 0) {
+    while ((n = read(fd, buf, sizeof buf - 1)) > 0) {
 	if (n < (int)(sizeof buf - 1))
 	    end_of_file = 1;
-	if (n == 0 && rbuf == 0) {
-	    close(fd);
+	if (n == 0 && rbuf == 0)
 	    return NULL;	/* process died between our open and read */
-	}
 	if (n < 0) {
 	    if (rbuf)
 		free(rbuf);
-	    close(fd);
 	    return NULL;	/* read error */
 	}
-	if (end_of_file && (n == 0 || buf[n-1]))/* last read char not null */
+	if (end_of_file && buf[n-1])		/* last read char not null */
 	    buf[n++] = '\0';			/* so append null-terminator */
 	rbuf = xrealloc(rbuf, tot + n);		/* allocate more memory */
 	memcpy(rbuf + tot, buf, n);		/* copy buffer into it */
@@ -508,12 +483,9 @@ static char** file2strvec(const char* directory, const char* what) {
     }
     endbuf = rbuf + tot;			/* count space for pointers */
     align = (sizeof(char*)-1) - ((tot + sizeof(char*)-1) & (sizeof(char*)-1));
-    for (c = 0, p = rbuf; p < endbuf; p++) {
-	if (!*p || *p == '\n')
+    for (c = 0, p = rbuf; p < endbuf; p++)
+    	if (!*p)
 	    c += sizeof(char*);
-	if (*p == '\n')
-	    *p = 0;
-    }
     c += sizeof(char*);				/* one extra for NULL term */
 
     rbuf = xrealloc(rbuf, tot + c + align);	/* make room for ptrs AT END */
@@ -529,15 +501,13 @@ static char** file2strvec(const char* directory, const char* what) {
     return ret;
 }
 
-    // this is the former under utilized 'read_cmdline', which has been
-    // generalized in support of these new libproc flags:
-    //     PROC_EDITCGRPCVT, PROC_EDITCMDLCVT
-static int read_unvectored(char *restrict const dst, unsigned sz, unsigned pid, const char *what, char sep) {
+// warning: interface may change
+int read_cmdline(char *restrict const dst, unsigned sz, unsigned pid){
     char name[32];
     int fd;
     unsigned n = 0;
-
-    snprintf(name, sizeof name, "/proc/%u/%s", pid, what);
+    dst[0] = '\0';
+    snprintf(name, sizeof name, "/proc/%u/cmdline", pid);
     fd = open(name, O_RDONLY);
     if(fd==-1) return 0;
     for(;;){
@@ -547,85 +517,22 @@ static int read_unvectored(char *restrict const dst, unsigned sz, unsigned pid, 
             break;
         }
         n += r;
-        if(n==sz) {      // filled the buffer
-            --n;         // make room for '\0'
-            break;
-        }
+        if(n==sz) break; // filled the buffer
         if(r==0) break;  // EOF
     }
     close(fd);
     if(n){
-        int i=n;
-        while(i--)
-            if(dst[i]=='\n' || dst[i]=='\0') dst[i]=sep;
+        int i;
+        if(n==sz) n--;
+        dst[n] = '\0';
+        i=n;
+        while(i--){
+            int c = dst[i];
+            if(c<' ' || c>'~') dst[i]=' ';
+        }
     }
-    dst[n] = '\0';
     return n;
 }
-
-static char** vectorize_this_str (const char* src) {
- #define pSZ  (sizeof(char*))
-    char *cpy, **vec;
-    int adj, tot;
-
-    tot = strlen(src) + 1;                       // prep for our vectors
-    adj = (pSZ-1) - ((tot + pSZ-1) & (pSZ-1));   // calc alignment bytes
-    cpy = xcalloc(NULL, tot + adj + (2 * pSZ));  // get new larger buffer
-    snprintf(cpy, tot, "%s", src);               // duplicate their string
-    vec = (char**)(cpy + tot + adj);             // prep pointer to pointers
-    *vec = cpy;                                  // point 1st vector to string
-    *(vec+1) = NULL;                             // null ptr 'list' delimit
-    return vec;                                  // ==> free(*vec) to dealloc
- #undef pSZ
-}
-
-    // This routine reads /proc/#/cgroup for a single task.
-    // It is similar to file2strvec except we filter and concatenate
-    // the data into a single string represented as a single vector.
-static void fill_cgroup_cvt (proc_t *restrict p) {
- #define vMAX ( sizeof(dbuf) - (int)(dst - dbuf) )
-    char sbuf[1024], dbuf[1024];
-    char *src, *dst, *grp, *eob;
-    int tot, x, whackable_int = sizeof(dbuf);
-
-    *(dst = dbuf) = '\0';                        // empty destination
-    tot = read_unvectored(sbuf, sizeof(sbuf), p->tid, "cgroup", '\0');
-    for (src = sbuf, eob = sbuf + tot; src < eob; src += x) {
-        x = 1;                                   // loop assist
-        if (!*src) continue;
-        x = strlen((grp = src));
-        if ('/' == grp[x - 1]) continue;         // skip empty root cgroups
-#if 0
-        grp += strspn(grp, "0123456789:");       // jump past group number
-#endif
-        dst += snprintf(dst, vMAX, "%s", (dst > dbuf) ? "," : "");
-        dst += escape_str(dst, grp, vMAX, &whackable_int);
-    }
-    p->cgroup = vectorize_this_str(dbuf[0] ? dbuf : "-");
- #undef vMAX
-}
-
-    // This routine reads /proc/#/cmdline for the designated task, "escapes"
-    // the result into a single string represented as a single vector and
-    // guarantees the caller a valid proc_t.cmdline pointer.
-static void fill_cmdline_cvt (proc_t *restrict p) {
- #define uFLG ( ESC_BRACKETS | ESC_DEFUNCT )
-    char sbuf[2048], dbuf[2048];
-    int whackable_int = sizeof(dbuf);
-
-    if (read_unvectored(sbuf, sizeof(sbuf), p->tid, "cmdline", ' '))
-        escape_str(dbuf, sbuf, sizeof(dbuf), &whackable_int);
-    else
-        escape_command(dbuf, p, sizeof(dbuf), &whackable_int, uFLG);
-    p->cmdline = vectorize_this_str(dbuf);
- #undef uFLG
-}
-
-// warning: interface may change
-int read_cmdline(char *restrict const dst, unsigned sz, unsigned pid) {
-    return read_unvectored(dst, sz, pid, "cmdline", ' ');
-}
-
 
 /* These are some nice GNU C expression subscope "inline" functions.
  * The can be used with arbitrary types and evaluate their arguments
@@ -708,37 +615,34 @@ static proc_t* simple_readproc(PROCTAB *restrict const PT, proc_t *restrict cons
         }
     }
 
-    if (unlikely(flags & PROC_FILLENV))          /* read /proc/#/environ */
-        p->environ = file2strvec(path, "environ");
+    if (flags & PROC_FILLSUPGRP && p->nsupgid > 0){
+        allocsupgrp(p);
+        int i;
+        for (i=0; i < p->nsupgid; i++)
+            memcpy(p->supgrp[i], group_from_gid(p->supgid[i]), P_G_SZ);
+    }
+
+    if ((flags & PROC_FILLCOM) || (flags & PROC_FILLARG))	/* read+parse /proc/#/cmdline */
+	p->cmdline = file2strvec(path, "cmdline");
+    else
+        p->cmdline = NULL;
+
+    if (unlikely(flags & PROC_FILLENV))			/* read+parse /proc/#/environ */
+	p->environ = file2strvec(path, "environ");
     else
         p->environ = NULL;
 
-    if (flags & (PROC_FILLCOM|PROC_FILLARG)) {   /* read /proc/#/cmdline */
-        if (flags & PROC_EDITCMDLCVT)
-            fill_cmdline_cvt(p);
-        else
-            p->cmdline = file2strvec(path, "cmdline");
-    } else
-        p->cmdline = NULL;
-
-    if ((flags & PROC_FILLCGROUP)                /* read /proc/#/cgroup, if possible */
-    && linux_version_code >= LINUX_VERSION(2,6,24)) {
-        if (flags & PROC_EDITCGRPCVT)
-            fill_cgroup_cvt(p);
-        else
-            p->cgroup = file2strvec(path, "cgroup");
-    } else
-        p->cgroup = NULL;
-
-#ifdef OOMEM_ENABLE
-    if (unlikely(flags & PROC_FILLOOM)) {
-        if (likely( file2str(path, "oom_score", sbuf, sizeof sbuf) != -1 ))
-            oomscore2proc(sbuf, p);
-        if (likely( file2str(path, "oom_adj", sbuf, sizeof sbuf) != -1 ))
-            oomadj2proc(sbuf, p);
+    if(linux_version_code>=LINUX_VERSION(2,6,24) && (flags & PROC_FILLCGROUP)) {
+	p->cgroup = file2strvec(path, "cgroup"); 	/* read /proc/#/cgroup */
+    	if(p->cgroup && *p->cgroup) {
+		int i = strlen(*p->cgroup);
+		if( (*p->cgroup)[i-1]=='\n' )
+			(*p->cgroup)[i-1] = ' '; //little hack to remove trailing \n
+	}
     }
-#endif
-
+    else
+	p->cgroup = NULL;
+    
     return p;
 next_proc:
     return NULL;
@@ -810,6 +714,13 @@ static proc_t* simple_readtask(PROCTAB *restrict const PT, const proc_t *restric
             memcpy(t->sgroup, group_from_gid(t->sgid), sizeof t->sgroup);
             memcpy(t->fgroup, group_from_gid(t->fgid), sizeof t->fgroup);
         }
+    }
+
+    if (flags & PROC_FILLSUPGRP && t->nsupgid > 0){
+        allocsupgrp(t);
+        int i;
+        for (i=0; i < t->nsupgid; i++)
+            memcpy(t->supgrp[i], group_from_gid(t->supgid[i]), P_G_SZ);
     }
 
 #if 0
@@ -917,6 +828,7 @@ proc_t* readproc(PROCTAB *restrict const PT, proc_t *restrict p) {
 
   saved_p = p;
   if(!p) p = xcalloc(p, sizeof *p); /* passed buf or alloced mem */
+  else memset(p, 0, sizeof *p);
 
   for(;;){
     // fills in the path, plus p->tid and p->tgid
@@ -945,6 +857,7 @@ proc_t* readtask(PROCTAB *restrict const PT, const proc_t *restrict const p, pro
 
   saved_t = t;
   if(!t) t = xcalloc(t, sizeof *t); /* passed buf or alloced mem */
+  else memset(t, 0, sizeof *t);
 
   // 1. got to fake a thread for old kernels
   // 2. for single-threaded processes, this is faster (but must patch up stuff that differs!)
@@ -1026,6 +939,23 @@ void closeproc(PROCTAB* PT) {
     }
 }
 
+// allocate memory for supgrp
+void allocsupgrp(proc_t *p) {
+    if (!p || p->nsupgid == 0) return;
+    p->supgrp = (char**)xmalloc(p->nsupgid * sizeof(char*));
+    int i;
+    for (i=0; i<p->nsupgid; i++)
+      p->supgrp[i] = (char*)xmalloc(P_G_SZ * sizeof(char));
+}
+
+// free memory allocated for supgrp
+void freesupgrp(proc_t *p) {
+    int i;
+    for (i=0; i<p->nsupgid; i++)
+      if (p->supgrp[i]) free(p->supgrp[i]);
+    free(p->supgrp);
+}
+
 // deallocate the space allocated by readproc if the passed rbuf was NULL
 void freeproc(proc_t* p) {
     if (!p)	/* in case p is NULL */
@@ -1084,6 +1014,8 @@ proc_t** readproctab(int flags, ...) {
     else
 	PT = openproc(flags);
     va_end(ap);
+    if (!PT)
+      return 0;
     do {					/* read table: */
 	tab = xrealloc(tab, (n+1)*sizeof(proc_t*));/* realloc as we go, using */
 	tab[n] = readproc_direct(PT, NULL);     /* final null to terminate */
@@ -1176,7 +1108,7 @@ proc_data_t *readproctab2(int(*want_proc)(proc_t *buf), int(*want_task)(proc_t *
  * and filled out proc_t structure.
  */
 proc_t * get_proc_stats(pid_t pid, proc_t *p) {
-	static char path[PATH_MAX], sbuf[1024];
+	static char path[32], sbuf[1024];
 	struct stat statbuf;
 
 	sprintf(path, "/proc/%d", pid);

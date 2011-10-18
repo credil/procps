@@ -17,7 +17,7 @@
 # numbers for future use, the ELF soname can be set equal to the
 # file name until some future date when a stable ABI is declared.
 
-SHARED     := 1
+SHARED     ?= 1
 
 # for lib$(NAME).so and /usr/include/($NAME) and such
 NAME       :=  proc

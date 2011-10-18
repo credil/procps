@@ -209,8 +209,8 @@ static void new_format(void) {
 	 unitConvert(kb_swap_used), unitConvert(kb_main_free),
 	 unitConvert(a_option?kb_inactive:kb_main_buffers),
 	 unitConvert(a_option?kb_active:kb_main_cached),
-	 (unsigned)( (*pswpin  * unitConvert(kb_per_page) * hz + divo2) / Div ),
-	 (unsigned)( (*pswpout * unitConvert(kb_per_page) * hz + divo2) / Div ),
+	 (unsigned)( (*pswpin  * kb_per_page * hz + divo2) / Div ),
+	 (unsigned)( (*pswpout * kb_per_page * hz + divo2) / Div ),
 	 (unsigned)( (*pgpgin                * hz + divo2) / Div ),
 	 (unsigned)( (*pgpgout               * hz + divo2) / Div ),
 	 (unsigned)( (*intr                  * hz + divo2) / Div ),
@@ -258,8 +258,8 @@ static void new_format(void) {
 	   unitConvert(kb_swap_used),unitConvert(kb_main_free),
 	   unitConvert(a_option?kb_inactive:kb_main_buffers),
 	   unitConvert(a_option?kb_active:kb_main_cached),
-	   (unsigned)( ( (pswpin [tog] - pswpin [!tog])*unitConvert(kb_per_page)+sleep_half )/sleep_time ), /*si*/
-	   (unsigned)( ( (pswpout[tog] - pswpout[!tog])*unitConvert(kb_per_page)+sleep_half )/sleep_time ), /*so*/
+	   (unsigned)( ( (pswpin [tog] - pswpin [!tog])*kb_per_page+sleep_half )/sleep_time ), /*si*/
+	   (unsigned)( ( (pswpout[tog] - pswpout[!tog])*kb_per_page+sleep_half )/sleep_time ), /*so*/
 	   (unsigned)( (  pgpgin [tog] - pgpgin [!tog]             +sleep_half )/sleep_time ), /*bi*/
 	   (unsigned)( (  pgpgout[tog] - pgpgout[!tog]             +sleep_half )/sleep_time ), /*bo*/
 	   (unsigned)( (  intr   [tog] - intr   [!tog]             +sleep_half )/sleep_time ), /*in*/
@@ -286,7 +286,7 @@ static int diskpartition_format(const char* partition_name){
     struct disk_stat *disks;
     struct partition_stat *partitions, *current_partition=NULL;
     unsigned long ndisks, j, k, npartitions;
-    const char format[] = "%20u %10llu %10u %10u\n";
+    const char format[] = "%20u %10llu %10u %10llu\n";
 
     fDiskstat=fopen("/proc/diskstats","rb");
     if(!fDiskstat){

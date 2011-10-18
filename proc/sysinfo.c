@@ -24,9 +24,7 @@
 #include <netinet/in.h>  /* htons */
 #endif
 
-#ifndef OOMEM_ENABLE
 long smp_num_cpus;     /* number of CPUs */
-#endif
 
 #define BAD_OPEN_MESSAGE					\
 "Error: /proc must be mounted\n"				\
@@ -92,35 +90,6 @@ int uptime(double *restrict uptime_secs, double *restrict idle_secs) {
     return up;	/* assume never be zero seconds in practice */
 }
 
-unsigned long getbtime(void) {
-    static unsigned long btime = 0;
-    FILE *f;
-
-    if (btime)
-	return btime;
-
-    /* /proc/stat can get very large on multi-CPU systems so we
-       can't use FILE_TO_BUF */
-    if (!(f = fopen(STAT_FILE, "r"))) {
-	fputs(BAD_OPEN_MESSAGE, stderr);
-	fflush(NULL);
-	_exit(102);
-    }
-
-    while ((fgets(buf, sizeof buf, f))) {
-        if (sscanf(buf, "btime %lu", &btime) == 1)
-            break;
-    }
-    fclose(f);
-
-    if (!btime) {
-	fputs("missing btime in " STAT_FILE "\n", stderr);
-	exit(1);
-    }
-
-    return btime;
-}
-
 /***********************************************************************
  * Some values in /proc are expressed in units of 1/HZ seconds, where HZ
  * is the kernel clock tick rate. One of these units is called a jiffy.
@@ -155,38 +124,27 @@ unsigned long getbtime(void) {
 unsigned long long Hertz;
 
 static void old_Hertz_hack(void){
-  unsigned long long user_j, nice_j, sys_j, other_j;  /* jiffies (clock ticks) */
+  unsigned long long user_j, nice_j, sys_j, other_j, wait_j, hirq_j, sirq_j, stol_j;  /* jiffies (clock ticks) */
   double up_1, up_2, seconds;
   unsigned long long jiffies;
   unsigned h;
   char *restrict savelocale;
-  long hz;
 
-#ifdef _SC_CLK_TCK
-  if((hz = sysconf(_SC_CLK_TCK)) > 0){
-    Hertz = hz;
-    return;
-  }
-#endif
-
+  wait_j = hirq_j = sirq_j = stol_j = 0;
   savelocale = setlocale(LC_NUMERIC, NULL);
   setlocale(LC_NUMERIC, "C");
   do{
     FILE_TO_BUF(UPTIME_FILE,uptime_fd);  sscanf(buf, "%lf", &up_1);
     /* uptime(&up_1, NULL); */
     FILE_TO_BUF(STAT_FILE,stat_fd);
-    sscanf(buf, "cpu %Lu %Lu %Lu %Lu", &user_j, &nice_j, &sys_j, &other_j);
+    sscanf(buf, "cpu %Lu %Lu %Lu %Lu %Lu %Lu %Lu %Lu", &user_j, &nice_j, &sys_j, &other_j, &wait_j, &hirq_j, &sirq_j, &stol_j);
     FILE_TO_BUF(UPTIME_FILE,uptime_fd);  sscanf(buf, "%lf", &up_2);
     /* uptime(&up_2, NULL); */
   } while((long long)( (up_2-up_1)*1000.0/up_1 )); /* want under 0.1% error */
   setlocale(LC_NUMERIC, savelocale);
-  jiffies = user_j + nice_j + sys_j + other_j;
+  jiffies = user_j + nice_j + sys_j + other_j + wait_j + hirq_j + sirq_j + stol_j ;
   seconds = (up_1 + up_2) / 2;
-#ifndef OOMEM_ENABLE
   h = (unsigned)( (double)jiffies/seconds/smp_num_cpus );
-#else
-  h = (unsigned)( (double)jiffies/seconds/smp_num_cpus() );
-#endif
   /* actual values used by 2.4 kernels: 32 64 100 128 1000 1024 1200 */
   switch(h){
   case    9 ...   11 :  Hertz =   10; break; /* S/390 (sometimes) */
@@ -252,34 +210,10 @@ static int check_for_privs(void){
   return !!rc;
 }
 
-#ifdef OOMEM_ENABLE
-long smp_num_cpus(void)
-{
-  static long _smp_num_cpus=-1;     /* number of CPUs */
-
-  if (_smp_num_cpus != -1)
-    return(_smp_num_cpus);
-
-  // ought to count CPUs in /proc/stat instead of relying
-  // on glibc, which foolishly tries to parse /proc/cpuinfo
-  //
-  // SourceForge has an old Alpha running Linux 2.2.20 that
-  // appears to have a non-SMP kernel on a 2-way SMP box.
-  // _SC_NPROCESSORS_CONF returns 2, resulting in HZ=512
-  // _SC_NPROCESSORS_ONLN returns 1, which should work OK
-
-  _smp_num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
-  if(_smp_num_cpus<1) _smp_num_cpus=1; /* SPARC glibc is buggy */
-
-  return(_smp_num_cpus);
-}
-#endif
-
 static void init_libproc(void) __attribute__((constructor));
 static void init_libproc(void){
   have_privs = check_for_privs();
   init_Linux_version(); /* Must be called before we check code */
-#ifndef OOMEM_ENABLE
   // ought to count CPUs in /proc/stat instead of relying
   // on glibc, which foolishly tries to parse /proc/cpuinfo
   //
@@ -289,12 +223,21 @@ static void init_libproc(void){
   // _SC_NPROCESSORS_ONLN returns 1, which should work OK
   smp_num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
   if(smp_num_cpus<1) smp_num_cpus=1; /* SPARC glibc is buggy */
-#endif
+#ifdef __linux__
   if(linux_version_code > LINUX_VERSION(2, 4, 0)){ 
     Hertz = find_elf_note(AT_CLKTCK);
     if(Hertz!=NOTE_NOT_FOUND) return;
     fputs("2.4+ kernel w/o ELF notes? -- report this\n", stderr);
   }
+#endif
+#if defined(__FreeBSD_kernel__) || defined(__FreeBSD__)
+  /* On FreeBSD the Hertz hack is unrelaible, there is no ELF note and
+   * Hertz isn't defined in asm/params.h 
+   * See Debian Bug #460331
+   */
+    Hertz = 100;
+    return;
+#endif
   old_Hertz_hack();
 }
 
@@ -672,7 +615,7 @@ void meminfo(void){
     );
     head = tail+1;
     if(!found) goto nextline;
-    *(found->slot) = strtoul(head,&tail,10);
+    *(found->slot) = (unsigned long)strtoull(head,&tail,10);
 nextline:
     tail = strchr(head, '\n');
     if(!tail) break;
@@ -862,6 +805,18 @@ unsigned int getpartitions_num(struct disk_stat *disks, int ndisks){
 }
 
 /////////////////////////////////////////////////////////////////////////////
+static int is_disk(char *dev)
+{
+  char syspath[PATH_MAX];
+  char *slash;
+
+  while ((slash = strchr(dev, '/')))
+    *slash = '!';
+  snprintf(syspath, sizeof(syspath), "/sys/block/%s", dev);
+  return !(access(syspath, F_OK));
+}
+
+/////////////////////////////////////////////////////////////////////////////
 
 unsigned int getdiskstat(struct disk_stat **disks, struct partition_stat **partitions){
   FILE* fd;
@@ -869,6 +824,7 @@ unsigned int getdiskstat(struct disk_stat **disks, struct partition_stat **parti
   int cPartition = 0;
   int fields;
   unsigned dummy;
+  char devname[PATH_MAX];
 
   *disks = NULL;
   *partitions = NULL;
@@ -881,8 +837,9 @@ unsigned int getdiskstat(struct disk_stat **disks, struct partition_stat **parti
       fclose(fd);
       break;
     }
-    fields = sscanf(buff, " %*d %*d %*s %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %u", &dummy);
-    if (fields == 1){
+    fields = sscanf(buff, " %*d %*d %15s %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %u",
+            &devname, &dummy);
+    if (fields == 2 && is_disk(devname)){
       (*disks) = realloc(*disks, (cDisk+1)*sizeof(struct disk_stat));
       sscanf(buff,  "   %*d    %*d %15s %u %u %llu %u %u %u %llu %u %u %u %u",
         //&disk_major,
@@ -905,7 +862,9 @@ unsigned int getdiskstat(struct disk_stat **disks, struct partition_stat **parti
     }else{
       (*partitions) = realloc(*partitions, (cPartition+1)*sizeof(struct partition_stat));
       fflush(stdout);
-      sscanf(buff,  "   %*d    %*d %15s %u %llu %u %u",
+      sscanf(buff,  (fields == 2)
+          ? "   %*d    %*d %15s %u %*u %llu %*u %u %*u %llu %*u %*u %*u %*u"
+          : "   %*d    %*d %15s %u %llu %u %llu",
         //&part_major,
         //&part_minor,
         (*partitions)[cPartition].partition_name,

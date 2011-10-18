@@ -67,7 +67,8 @@ The \fB-D\fP reports some summary statistics about disk activity.
 .PP
 The \fB\-p\fP followed by some partition name for detailed statistics (2.5.70 or above required)
 .PP
-The \fB\-S\fP followed by k or K or m or M switches outputs between 1000, 1024, 1000000, or 1048576 bytes
+The \fB\-S\fP followed by k or K or m or M switches changes the units of
+ouput from bytes to outputs between 1000, 1024, 1000000, or 1048576 bytes. Note this does not change the swap (si/so) or block (bi/bo) fields.
 .PP
 The \fB\-V\fP switch results in displaying version information.
 .PP
@@ -109,7 +110,7 @@ bo: Blocks sent to a block device (blocks/s).
 .nf
 in: The number of interrupts per second, including the clock.
 cs: The number of context switches per second.
-.fi
+.if
 .PP
 .SS
 .B "CPU "
@@ -120,7 +121,7 @@ sy: Time spent running kernel code. (system time)
 id: Time spent idle. Prior to Linux 2.5.41, this includes IO\-wait time.
 wa: Time spent waiting for IO. Prior to Linux 2.5.41, included in idle.
 st: Time stolen from a virtual machine. Prior to Linux 2.6.11, unknown.
-.fi
+
 .PP
 .SH FIELD DESCRIPTION FOR DISK MODE 
 .SS
@@ -191,12 +192,7 @@ vmstat uses slabinfo 1.1    FIXME
 .fi
 
 .SH "SEE ALSO"
-.BR iostat (1),
-.BR sar (1),
-.BR mpstat (1),
-.BR ps (1),
-.BR top (1),
-.BR free (1)
+iostat(1), sar(1), mpstat(1), ps(1), top(1), free(1)
 .PP
 .SH BUGS
 Does not tabulate the block io per device or count the number of system calls.

@@ -128,7 +128,7 @@ static void check_proc(int pid){
   sprintf(buf, "/proc/%d/stat", pid); /* pid (cmd) state ppid pgrp session tty */
   fd = open(buf,O_RDONLY);
   if(fd==-1){  /* process exited maybe */
-    if(pids && w_flag) printf("WARNING: process %d could not be found.",pid);
+    if(pids && w_flag) printf("WARNING: process %d could not be found.\n",pid);
     return;
   }
   fstat(fd, &statbuf);
@@ -307,7 +307,7 @@ no_more_args:
     long pid;
     char *endp;
     pid = strtol(argv[argc],&endp,10);
-    if(!*endp){
+    if(!*endp && (endp != argv[argc])){
       if(!kill((pid_t)pid,signo)) continue;
       // The UNIX standard contradicts itself. If at least one process
       // is matched for each PID (as if processes could share PID!) and
@@ -317,6 +317,7 @@ no_more_args:
       // The standard says we return non-zero if an error occurs. Thus if
       // killing two processes gives 0 for one and EPERM for the other,
       // we are required to return both zero and non-zero. Quantum kill???
+      perror("kill");
       exitvalue = 1;
       continue;
     }
@@ -341,7 +342,7 @@ static void skillsnice_usage(void){
   }else{
     fprintf(stderr,
       "Usage:   snice [new priority] [options] process selection criteria\n"
-      "Example: snice netscape crack +7\n"
+      "Example: snice +7 netscape crack \n"
       "\n"
       "The default priority is +4. (snice +4 ...)\n"
       "Priority numbers range from +20 (slowest) to -20 (fastest).\n"
@@ -463,6 +464,8 @@ selection_collection:
     switch(force){ /* fall through each data type */
     default: skillsnice_usage();
     case 0: /* not forced */
+      if (argptr && argptr[0] == '-') /* its the next argument not a parameter */
+        continue;
     case 't':
       if(argc){
         struct stat sbuf;
